@@ -52,8 +52,10 @@ class MultiBoxLoss(nn.Module):
         in_box_diff = 1.0 * box_diff
         abs_in_box_diff = torch.abs(in_box_diff)
         smoothL1_sign = (abs_in_box_diff < 1. / sigma_2).detach().float()
+        # loss_box = (torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign
+                    # + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)) * bbox_outside_weights
         loss_box = (torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign
-                    + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)) * bbox_outside_weights
+                    + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)) * 1.0
         return loss_box.sum() / loss_box.shape[0]
 
     def KL_loss(self, bbox_pred, bbox_targets, bbox_pred_std, sigma=1.0):
@@ -81,9 +83,8 @@ class MultiBoxLoss(nn.Module):
         bbox_inws_out = bbox_inws_out * scale
         bbox_inws_outr = torch.mean(bbox_inws_out, dim = 0)
         bbox_pred_std_abs_mulw_loss = torch.sum(bbox_inws_outr)
+        # return loss_bbox, bbox_pred_std_abs_mulw_loss, bbox_pred_std_abs_logw_loss
         return loss_bbox, bbox_pred_std_abs_mulw_loss, bbox_pred_std_abs_logw_loss
-
-
 
     def forward(self, predictions, targets):
         """Multibox Loss
@@ -92,6 +93,7 @@ class MultiBoxLoss(nn.Module):
             and prior boxes from SSD net.
                 conf shape: torch.size(batch_size,num_priors,num_classes)
                 loc shape: torch.size(batch_size,num_priors,4)
+                std shape: torch.size(batch_size,num_priors,4)
                 priors shape: torch.size(num_priors,4)
 
             targets (tensor): Ground truth boxes and labels for a batch,
@@ -99,7 +101,8 @@ class MultiBoxLoss(nn.Module):
         """
         loc_data, std_data, conf_data, priors = predictions
         # print('priors:', priors.size())
-        num = loc_data.size(0)
+        # print('std:', std_data.size())
+        num = loc_data.size(0)     #batch size
         priors = priors[:loc_data.size(1), :]
         # print('priors:', priors.size())
         num_priors = (priors.size(0))
@@ -137,12 +140,12 @@ class MultiBoxLoss(nn.Module):
         # print((loc_data[1] + priors).size())
         tensor = torch.ones(())
         coords_box_pred =  tensor.new_empty((loc_data.size()))  #predicted bbox coordinates 
-        print(coords_box_pred.size())
+        # print(coords_box_pred.size())
         for i in range(loc_data.size(0)):
             decoded_boxes = decode(loc_data[i], priors, self.variance)
             coords_box_pred[i] = decoded_boxes
 
-        print('dd:', coords_box_pred.size())
+        # print('dd:', coords_box_pred.size())
 
         # loc_prior = loc_p + priors[pos_idx].view(-1, 4)  # the predicted positions (predicted offsets + priors)
         loc_pre = coords_box_pred[pos_idx].view(-1, 4)           # the predicted positions
@@ -173,7 +176,9 @@ class MultiBoxLoss(nn.Module):
         ###################################
         
         loss_l, kloss1, kloss2 = self.KL_loss(loc_pre, loc_t, std_p)    # return three losses
-
+        print('loss_l:', loss_l)
+        print('kloss1:', kloss1)
+        print('kloss2:', kloss2)
         ###################################
         # loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
 
@@ -200,9 +205,9 @@ class MultiBoxLoss(nn.Module):
         # Sum of losses: L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
 
         N = num_pos.data.sum()
-        loss_l /= N
-        kloss1 /= N
-        kloss2 /= N
+        # loss_l /= N
+        # kloss1 /= N
+        # kloss2 /= N
         loss_c /= N
         return loss_l, kloss1, kloss2, loss_c
 
