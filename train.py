@@ -37,7 +37,7 @@ parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
 parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
-parser.add_argument('--cuda', default=True, type=str2bool,
+parser.add_argument('--cuda', default=False, type=str2bool,
                     help='Use CUDA to train model')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
                     help='initial learning rate')
@@ -115,6 +115,7 @@ def train():
         # initialize newly added layers' weights with xavier method
         ssd_net.extras.apply(weights_init)
         ssd_net.loc.apply(weights_init)
+        ssd_net.std.apply(weights_init)
         ssd_net.conf.apply(weights_init)
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
@@ -125,6 +126,8 @@ def train():
     net.train()
     # loss counters
     loc_loss = 0
+    KL1_loss = 0
+    KL2_loss = 0
     conf_loss = 0
     epoch = 0
     print('Loading the dataset...')
@@ -138,7 +141,7 @@ def train():
 
     if args.visdom:
         vis_title = 'SSD.PyTorch on ' + dataset.name
-        vis_legend = ['Loc Loss', 'Conf Loss', 'Total Loss']
+        vis_legend = ['Loc Loss', 'KL1 Loss', 'KL2 Loss', 'Conf Loss', 'Total Loss']
         iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
         epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
 
@@ -150,10 +153,12 @@ def train():
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
         if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
-            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None,
+            update_vis_plot(epoch, loc_loss, KL1_loss, KL2_loss, conf_loss, epoch_plot, None,
                             'append', epoch_size)
             # reset epoch loss counters
             loc_loss = 0
+            KL1_loss = 0
+            KL2_loss = 0
             conf_loss = 0
             epoch += 1
 
@@ -175,20 +180,26 @@ def train():
         out = net(images)
         # backprop
         optimizer.zero_grad()
-        loss_l, loss_c = criterion(out, targets)
-        loss = loss_l + loss_c
+        loss_l, KL_loss_1, KL_loss_2, loss_c = criterion(out, targets)
+        loss = loss_l + KL_loss_1 + KL_loss_2 + loss_c
         loss.backward()
         optimizer.step()
         t1 = time.time()
-        loc_loss += loss_l.data[0]
-        conf_loss += loss_c.data[0]
-
+        loc_loss += loss_l
+        KL1_loss += KL_loss_1
+        KL2_loss += KL_loss_2
+        conf_loss += loss_c
+#########################
         if iteration % 10 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
-            print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data[0]), end=' ')
+            print('iter ' + repr(iteration) + ' || loss_l: %.4f ||' % (loss_l), end=' ')
+            print('iter ' + repr(iteration) + ' || KL_loss_1: %.4f ||' % (KL_loss_1), end=' ')
+            print('iter ' + repr(iteration) + ' || KL_loss_2: %.4f ||' % (KL_loss_2), end=' ')
+            print('iter ' + repr(iteration) + ' || loss_c: %.4f ||' % (loss_c), end=' ')
+            print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss_l + KL_loss_1 + KL_loss_2 + loss_c), end=' ')
 
         if args.visdom:
-            update_vis_plot(iteration, loss_l.data[0], loss_c.data[0],
+            update_vis_plot(iteration, loss_l, KL_loss_1, KL_loss_2, loss_c,
                             iter_plot, epoch_plot, 'append')
 
         if iteration != 0 and iteration % 5000 == 0:
@@ -233,19 +244,19 @@ def create_vis_plot(_xlabel, _ylabel, _title, _legend):
     )
 
 
-def update_vis_plot(iteration, loc, conf, window1, window2, update_type,
+def update_vis_plot(iteration, loc, k1, k2, conf, window1, window2, window3, window4, update_type,
                     epoch_size=1):
     viz.line(
         X=torch.ones((1, 3)).cpu() * iteration,
-        Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu() / epoch_size,
+        Y=torch.Tensor([loc, k1, k2, conf, loc + k1 + k2 + conf]).unsqueeze(0).cpu() / epoch_size,
         win=window1,
         update=update_type
     )
     # initialize epoch plot on first iteration
     if iteration == 0:
         viz.line(
-            X=torch.zeros((1, 3)).cpu(),
-            Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu(),
+            X=torch.zeros((1, 5)).cpu(),
+            Y=torch.Tensor([loc, k1, k2, conf, loc + k1 + k2 + conf]).unsqueeze(0).cpu(),
             win=window2,
             update=True
         )

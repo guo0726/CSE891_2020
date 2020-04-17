@@ -35,6 +35,9 @@ def get_label_map(label_file):
     labels = open(label_file, 'r')
     for line in labels:
         ids = line.split(',')
+        # print(ids)
+        # print(ids[0])
+        # print(ids[1])
         label_map[int(ids[0])] = int(ids[1])
     return label_map
 

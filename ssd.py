@@ -41,7 +41,8 @@ class SSD(nn.Module):
         self.extras = nn.ModuleList(extras)
 
         self.loc = nn.ModuleList(head[0])
-        self.conf = nn.ModuleList(head[1])
+        self.std = nn.ModuleList(head[1])
+        self.conf = nn.ModuleList(head[2])
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
@@ -68,6 +69,7 @@ class SSD(nn.Module):
         """
         sources = list()
         loc = list()
+        std = list()
         conf = list()
 
         # apply vgg up to conv4_3 relu
@@ -89,15 +91,18 @@ class SSD(nn.Module):
                 sources.append(x)
 
         # apply multibox head to source layers
-        for (x, l, c) in zip(sources, self.loc, self.conf):
+        for (x, l, s, c) in zip(sources, self.loc, self.std, self.conf):
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
+            std.append(s(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
 
         loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
+        std = torch.cat([o.view(o.size(0), -1) for o in std], 1)
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
         if self.phase == "test":
             output = self.detect(
                 loc.view(loc.size(0), -1, 4),                   # loc preds
+                std.view(std.size(0), -1, 4),                   # std preds
                 self.softmax(conf.view(conf.size(0), -1,
                              self.num_classes)),                # conf preds
                 self.priors.type(type(x.data))                  # default boxes
@@ -105,6 +110,7 @@ class SSD(nn.Module):
         else:
             output = (
                 loc.view(loc.size(0), -1, 4),
+                std.view(std.size(0), -1, 4),
                 conf.view(conf.size(0), -1, self.num_classes),
                 self.priors
             )
@@ -163,21 +169,43 @@ def add_extras(cfg, i, batch_norm=False):
     return layers
 
 
+# def multibox(vgg, extra_layers, cfg, num_classes):
+#     loc_layers = []
+#     conf_layers = []
+#     vgg_source = [21, -2]
+#     for k, v in enumerate(vgg_source):
+#         loc_layers += [nn.Conv2d(vgg[v].out_channels,
+#                                  cfg[k] * 4, kernel_size=3, padding=1)]
+#         conf_layers += [nn.Conv2d(vgg[v].out_channels,
+#                         cfg[k] * num_classes, kernel_size=3, padding=1)]
+#     for k, v in enumerate(extra_layers[1::2], 2):
+#         loc_layers += [nn.Conv2d(v.out_channels, cfg[k]
+#                                  * 4, kernel_size=3, padding=1)]
+#         conf_layers += [nn.Conv2d(v.out_channels, cfg[k]
+#                                   * num_classes, kernel_size=3, padding=1)]
+#     return vgg, extra_layers, (loc_layers, conf_layers)
+
 def multibox(vgg, extra_layers, cfg, num_classes):
     loc_layers = []
+    std_layers = []
     conf_layers = []
+
     vgg_source = [21, -2]
     for k, v in enumerate(vgg_source):
         loc_layers += [nn.Conv2d(vgg[v].out_channels,
+                                 cfg[k] * 4, kernel_size=3, padding=1)]
+        std_layers += [nn.Conv2d(vgg[v].out_channels,
                                  cfg[k] * 4, kernel_size=3, padding=1)]
         conf_layers += [nn.Conv2d(vgg[v].out_channels,
                         cfg[k] * num_classes, kernel_size=3, padding=1)]
     for k, v in enumerate(extra_layers[1::2], 2):
         loc_layers += [nn.Conv2d(v.out_channels, cfg[k]
                                  * 4, kernel_size=3, padding=1)]
+        std_layers += [nn.Conv2d(v.out_channels, cfg[k]
+                                 * 4, kernel_size=3, padding=1)]
         conf_layers += [nn.Conv2d(v.out_channels, cfg[k]
                                   * num_classes, kernel_size=3, padding=1)]
-    return vgg, extra_layers, (loc_layers, conf_layers)
+    return vgg, extra_layers, (loc_layers, std_layers, conf_layers)
 
 
 base = {
