@@ -166,8 +166,14 @@ def train():
             step_index += 1
             adjust_learning_rate(optimizer, args.gamma, step_index)
 
+        try:
+            images, targets = next(batch_iterator)
+        except StopIteration:
+            batch_iterator = iter(data_loader)
+            images, targets = next(batch_iterator)
+
         # load train data
-        images, targets = next(batch_iterator)
+        # images, targets = next(batch_iterator)
 
         if args.cuda:
             images = Variable(images.cuda())
@@ -182,16 +188,16 @@ def train():
         optimizer.zero_grad()
         loss_l, KL_loss_1, KL_loss_2, loss_c = criterion(out, targets)
         loss = loss_l + KL_loss_1 + KL_loss_2 + loss_c
-        loss_l.backward()
+        loss.backward()
         optimizer.step()
         t1 = time.time()
-        loc_loss += loss_l
-        KL1_loss += KL_loss_1
-        KL2_loss += KL_loss_2
-        conf_loss += loss_c
+        loc_loss += loss_l.data
+        KL1_loss += KL_loss_1.data
+        KL2_loss += KL_loss_2.data
+        conf_loss += loss_c.data
 #########################
 
-        print(iteration)
+        # print(iteration)
         if iteration % 10 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
             print('iter ' + repr(iteration) + ' || loss_l: %.4f ||' % (loss_l), end=' ')

@@ -54,7 +54,7 @@ class MultiBoxLoss(nn.Module):
         abs_in_box_diff = torch.abs(in_box_diff)
         smoothL1_sign = (abs_in_box_diff < 1. / sigma_2).detach().float()
         loss_box = (torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign
-                    + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)) * 1.0
+                    + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)) * outweights
         # print(loss_box.size())
         # print(loss_box.shape[0])
         return loss_box.sum() / loss_box.shape[0]
@@ -75,7 +75,7 @@ class MultiBoxLoss(nn.Module):
         bbox_pred_std_nabs = -1*bbox_pred_std
         bbox_pred_std_nexp = torch.exp(bbox_pred_std_nabs)
         bbox_inws_out = bbox_pred_std_nexp * bbox_inws
-        bbox_pred_std_abs_logw = bbox_pred_std_abs_log * 2  # outside weights cancelled
+        bbox_pred_std_abs_logw = bbox_pred_std_abs_log  # outside weights cancelled
         bbox_pred_std_abs_logwr = torch.mean(bbox_pred_std_abs_logw, dim = 0)
         # print(bbox_pred_std_abs_logw.size())
         # print(bbox_pred_std_abs_logwr.size())
@@ -84,7 +84,8 @@ class MultiBoxLoss(nn.Module):
     
         #bbox_pred grad, stop std
         # loss_bbox = self.smooth_l1_loss(bbox_pred, bbox_targets, bbox_pred_std_nexp)
-        loss_bbox = F.smooth_l1_loss(bbox_pred, bbox_targets)
+        loss_bbox = F.smooth_l1_loss(bbox_pred, bbox_targets, size_average=False)
+        
         bbox_pred_std_abs_logw_loss = torch.sum(bbox_pred_std_abs_logwr)
         bbox_inws_out = bbox_inws_out * scale
         bbox_inws_outr = torch.mean(bbox_inws_out, dim = 0)
@@ -184,9 +185,9 @@ class MultiBoxLoss(nn.Module):
         ###################################
         
         loss_l, kloss1, kloss2 = self.KL_loss(loc_pre, loc_t, std_p)    # return three losses
-        print('loss_l:', loss_l)
-        print('kloss1:', kloss1)
-        print('kloss2:', kloss2)
+        # print('loss_l:', loss_l)
+        # print('kloss1:', kloss1)
+        # print('kloss2:', kloss2)
         ###################################
         # loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
 
@@ -213,7 +214,8 @@ class MultiBoxLoss(nn.Module):
         # Sum of losses: L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
 
         N = num_pos.data.sum()
-        # loss_l /= N
+        # print(N)
+        loss_l /= N
         # kloss1 /= N
         # kloss2 /= N
         loss_c /= N
