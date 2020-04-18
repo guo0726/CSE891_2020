@@ -126,7 +126,7 @@ def encode(matched, priors, variances):
     """
 
     # dist b/t match center and prior's center
-    g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]
+    g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]   # priors [x,y,w,h]
     # encode variance
     g_cxcy /= (variances[0] * priors[:, 2:])
     # match wh / prior wh
@@ -155,7 +155,7 @@ def decode(loc, priors, variances):
         priors[:, 2:] * torch.exp(loc[:, 2:] * variances[1])), 1)
     boxes[:, :2] -= boxes[:, 2:] / 2
     boxes[:, 2:] += boxes[:, :2]
-    return boxes
+    return boxes   #[x,y,w,h]
 
 
 def log_sum_exp(x):

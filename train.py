@@ -182,7 +182,7 @@ def train():
         optimizer.zero_grad()
         loss_l, KL_loss_1, KL_loss_2, loss_c = criterion(out, targets)
         loss = loss_l + KL_loss_1 + KL_loss_2 + loss_c
-        loss.backward()
+        loss_l.backward()
         optimizer.step()
         t1 = time.time()
         loc_loss += loss_l
@@ -190,6 +190,8 @@ def train():
         KL2_loss += KL_loss_2
         conf_loss += loss_c
 #########################
+
+        print(iteration)
         if iteration % 10 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
             print('iter ' + repr(iteration) + ' || loss_l: %.4f ||' % (loss_l), end=' ')
