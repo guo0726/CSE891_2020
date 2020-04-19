@@ -189,6 +189,9 @@ def nms(boxes, scores, std, overlap=0.5, top_k=200, sigma_t=0.02):
     
     v, idx = scores.sort(0)
     idx = idx[-top_k:]
+    boxes_new = boxes.new()
+    scores_new = scores.new()
+    std_new = std.new()
     torch.index_select(boxes, 0, idx, out=boxes_new)
     torch.index_select(scores, 0, idx, out=scores_new)
     torch.index_select(std, 0, idx, out=std_new)
