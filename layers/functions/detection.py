@@ -1,6 +1,6 @@
 import torch
 from torch.autograd import Function
-from ..box_utils import decode, nms
+from ..box_utils import decode, nms, box_voting
 from data import voc as cfg
 
 
@@ -21,7 +21,7 @@ class Detect(Function):
         self.conf_thresh = conf_thresh
         self.variance = cfg['variance']
 
-    def forward(self, loc_data, conf_data, prior_data):
+    def forward(self, loc_data, std_data, conf_data, prior_data):
         """
         Args:
             loc_data: (tensor) Loc preds from loc layers
@@ -31,19 +31,22 @@ class Detect(Function):
             prior_data: (tensor) Prior boxes and variances from priorbox layers
                 Shape: [1,num_priors,4]
         """
-        num = loc_data.size(0)  # batch size
+        num = loc_data.size(0)                          # batch size
         num_priors = prior_data.size(0)
-        output = torch.zeros(num, self.num_classes, self.top_k, 5)
+
+        output = torch.zeros(num, self.num_classes, 5)
+        final_output = torch.zeros(num, self.num_classes, 5)
+
         conf_preds = conf_data.view(num, num_priors,
                                     self.num_classes).transpose(2, 1)
 
         # Decode predictions into bboxes.
         for i in range(num):
-            decoded_boxes = decode(loc_data[i], prior_data, self.variance)
+            decoded_boxes = decode(loc_data[i], prior_data, self.variance)   # in [x, y, w, h]
             # For each class, perform nms
             conf_scores = conf_preds[i].clone()
-
             for cl in range(1, self.num_classes):
+
                 c_mask = conf_scores[cl].gt(self.conf_thresh)
                 scores = conf_scores[cl][c_mask]
                 if scores.size(0) == 0:
@@ -51,10 +54,14 @@ class Detect(Function):
                 l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)
                 boxes = decoded_boxes[l_mask].view(-1, 4)
                 # idx of highest scoring and non-overlapping boxes per class
-                ids, count = nms(boxes, scores, self.nms_thresh, self.top_k)
-                output[i, cl, :count] = \
-                    torch.cat((scores[ids[:count]].unsqueeze(1),
-                               boxes[ids[:count]]), 1)
+                nms_boxes, nms_scores, count = nms(boxes, scores, self.nms_thresh, self.top_k)
+                nms_boxes_scores = torch.cat((nms_boxes, nms_scores), 1)
+                all_boxes_scores = torch.cat((boxes, scores), 1)
+                final_boxes = box_voting(nms_boxes_scores, all_boxes_scores, 0.45) # voting thresh?
+                final_boxes_boxes = final_boxes[:,:4]
+                final_boxes_scores = final_boxes[:,4]
+                output[i, cl, :count] = torch.cat((final_boxes_scores,final_boxes_boxes),1)    # boxes after nms
+                
         flt = output.contiguous().view(num, -1, 5)
         _, idx = flt[:, :, 0].sort(1, descending=True)
         _, rank = idx.sort(1)
