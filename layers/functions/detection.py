@@ -55,8 +55,9 @@ class Detect(Function):
                     continue
                 l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)
                 boxes = decoded_boxes[l_mask].view(-1, 4)
+                std = std_data[i][l_mask].view(-1, 4)
                 # idx of highest scoring and non-overlapping boxes per class
-                nms_boxes, nms_scores, count = nms(boxes, scores, std_data, self.nms_thresh, self.top_k)
+                nms_boxes, nms_scores, count = nms(boxes, scores, std, self.nms_thresh, self.top_k)
 
                 nms_boxes_scores = torch.cat((nms_boxes, nms_scores), 1)
                 all_boxes_scores = torch.cat((boxes, scores), 1)
