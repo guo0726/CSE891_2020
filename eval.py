@@ -144,6 +144,7 @@ def get_voc_results_file_template(image_set, cls):
 
 
 def write_voc_results_file(all_boxes, dataset):
+    
     for cls_ind, cls in enumerate(labelmap):
         print('Writing {:s} VOC results file'.format(cls))
         filename = get_voc_results_file_template(set_type, cls)
@@ -173,6 +174,7 @@ def do_python_eval(output_dir='output', use_07=True):
         rec, prec, ap = voc_eval(
            filename, annopath, imgsetpath.format(set_type), cls, cachedir,
            ovthresh=0.5, use_07_metric=use_07_metric)
+        print('ap :',ap)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
@@ -261,7 +263,7 @@ cachedir: Directory for caching the annotations
     # read list of images
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
-    imagenames = [x.strip() for x in lines]
+    imagenames = [x.strip() for x in lines]  #ground truth images file
     if not os.path.isfile(cachefile):
         # load annots
         recs = {}
@@ -277,7 +279,7 @@ cachedir: Directory for caching the annotations
     else:
         # load
         with open(cachefile, 'rb') as f:
-            recs = pickle.load(f)
+            recs = pickle.load(f)             # ground truth images
 
     # extract gt objects for this class
     class_recs = {}
@@ -288,20 +290,25 @@ cachedir: Directory for caching the annotations
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
         det = [False] * len(R)
         npos = npos + sum(~difficult)
-        class_recs[imagename] = {'bbox': bbox,
+        class_recs[imagename] = {'bbox': bbox,          # ground truth objects
                                  'difficult': difficult,
                                  'det': det}
 
     # read dets
-    detfile = detpath.format(classname)
+    detfile = detpath.format(classname)      # predictions
     with open(detfile, 'r') as f:
         lines = f.readlines()
     if any(lines) == 1:
 
         splitlines = [x.strip().split(' ') for x in lines]
-        image_ids = [x[0] for x in splitlines]
-        confidence = np.array([float(x[1]) for x in splitlines])
-        BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+        print('splitlines: ', splitlines)
+        image_ids = [x[0] for x in splitlines]     #predictions id
+        confidence = np.array([float(x[1]) for x in splitlines])      #prediction scores
+        BB = np.array([[float(z) for z in x[2:]] for x in splitlines])   #prediction bbox
+        print('image_ids: ', image_ids)
+        print('confidence: ', confidence)
+        print('BB: ', BB)
+        # exit()
 
         # sort by confidence
         sorted_ind = np.argsort(-confidence)
@@ -314,10 +321,15 @@ cachedir: Directory for caching the annotations
         tp = np.zeros(nd)
         fp = np.zeros(nd)
         for d in range(nd):
-            R = class_recs[image_ids[d]]
-            bb = BB[d, :].astype(float)
+            try:
+                R = class_recs[image_ids[d]]     #find the prediction in ground truth with id
+            except:
+                continue
+            bb = BB[d, :].astype(float)  #detection bbox
             ovmax = -np.inf
-            BBGT = R['bbox'].astype(float)
+            BBGT = R['bbox'].astype(float)    #ground truth bbox
+            print('bb:', bb)
+            print('BBGT:', BBGT)
             if BBGT.size > 0:
                 # compute overlaps
                 # intersection
@@ -331,11 +343,12 @@ cachedir: Directory for caching the annotations
                 uni = ((bb[2] - bb[0]) * (bb[3] - bb[1]) +
                        (BBGT[:, 2] - BBGT[:, 0]) *
                        (BBGT[:, 3] - BBGT[:, 1]) - inters)
-                overlaps = inters / uni
-                ovmax = np.max(overlaps)
-                jmax = np.argmax(overlaps)
-
+                overlaps = inters / uni        
+                ovmax = np.max(overlaps)  #maximum overlap value
+                jmax = np.argmax(overlaps)    #maximum overlap index
+            print('ovmax:', ovmax)
             if ovmax > ovthresh:
+            # if ovmax > 0.01:
                 if not R['difficult'][jmax]:
                     if not R['det'][jmax]:
                         tp[d] = 1.
@@ -346,12 +359,19 @@ cachedir: Directory for caching the annotations
                 fp[d] = 1.
 
         # compute precision recall
+        print('tp:', tp)
+        print('fp:', fp)
         fp = np.cumsum(fp)
         tp = np.cumsum(tp)
         rec = tp / float(npos)
         # avoid divide by zero in case the first detection matches a difficult
         # ground truth
         prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+        print(tp)
+        print(fp)
+        print('recall', rec)
+        print('precision',prec)
+        # exit()
         ap = voc_ap(rec, prec, use_07_metric)
     else:
         rec = -1.
@@ -364,6 +384,7 @@ cachedir: Directory for caching the annotations
 def test_net(save_folder, net, cuda, dataset, transform, top_k,
              im_size=300, thresh=0.05):
     num_images = len(dataset)
+
     # all detections are collected into:
     #    all_boxes[cls][image] = N x 5 array of detections in
     #    (x1, y1, x2, y2, score)
@@ -383,16 +404,26 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             x = x.cuda()
         _t['im_detect'].tic()
         detections = net(x).data
+        # print('detection: ', detections.size)
+        # print('detection: ', detections)
+        # exit()
         detect_time = _t['im_detect'].toc(average=False)
 
         # skip j = 0, because it's the background class
+        # print(detections.size())
+        # exit(0)
         for j in range(1, detections.size(1)):
+
             dets = detections[0, j, :]
+            # print(dets)
+            # print(dets[:, 0])
+            # exit(0)
             mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
             dets = torch.masked_select(dets, mask).view(-1, 5)
             if dets.size(0) == 0:
                 continue
             boxes = dets[:, 1:]
+            # print('boxes: ', boxes)
             boxes[:, 0] *= w
             boxes[:, 2] *= w
             boxes[:, 1] *= h
@@ -402,6 +433,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
                                   scores[:, np.newaxis])).astype(np.float32,
                                                                  copy=False)
             all_boxes[j][i] = cls_dets
+            print('cls_dets: ', cls_dets)
 
         print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
                                                     num_images, detect_time))
@@ -422,6 +454,7 @@ if __name__ == '__main__':
     # load net
     num_classes = len(labelmap) + 1                      # +1 for background
     net = build_ssd('test', 300, num_classes)            # initialize SSD
+    net.add_std()
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')

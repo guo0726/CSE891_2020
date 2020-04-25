@@ -41,12 +41,30 @@ class SSD(nn.Module):
         self.extras = nn.ModuleList(extras)
 
         self.loc = nn.ModuleList(head[0])
-        self.std = nn.ModuleList(head[1])
-        self.conf = nn.ModuleList(head[2])
+        # self.std = nn.ModuleList(head[1])
+        self.conf = nn.ModuleList(head[1])
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(num_classes, 0, 200, 0.01, 0.45)
+            self.detect = Detect(num_classes, 0, 100, 0.06, 0.45)           #top_k
+
+    def add_std(self,size=300, num_classes=21):
+        mbox = {
+            '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+            '512': [],
+        }
+        cfg = mbox[str(size)]
+        std = []
+        
+        vgg_source = [21, -2]
+        for k, v in enumerate(vgg_source):
+            std += [nn.Conv2d(self.vgg[v].out_channels,
+                                    cfg[k] * 4, kernel_size=3, padding=1)]
+        for k, v in enumerate(self.extras[1::2], 2):
+            std += [nn.Conv2d(v.out_channels, cfg[k]
+                                    * 4, kernel_size=3, padding=1)]
+        self.std = nn.ModuleList(std)
+        # return  self.std_layers
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -126,6 +144,16 @@ class SSD(nn.Module):
         else:
             print('Sorry only .pth and .pkl files supported.')
 
+    def load_ssd_weights(self, base_file):
+        other, ext = os.path.splitext(base_file)
+        if ext == '.pkl' or '.pth':
+            print('Loading weights into state dict...')
+            self.load_state_dict(torch.load(base_file,
+                                 map_location=lambda storage, loc: storage))
+            print('Finished!')
+        else:
+            print('Sorry only .pth and .pkl files supported.')
+
 
 # This function is derived from torchvision VGG make_layers()
 # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
@@ -187,25 +215,25 @@ def add_extras(cfg, i, batch_norm=False):
 
 def multibox(vgg, extra_layers, cfg, num_classes):
     loc_layers = []
-    std_layers = []
+    # std_layers = []
     conf_layers = []
 
     vgg_source = [21, -2]
     for k, v in enumerate(vgg_source):
         loc_layers += [nn.Conv2d(vgg[v].out_channels,
                                  cfg[k] * 4, kernel_size=3, padding=1)]
-        std_layers += [nn.Conv2d(vgg[v].out_channels,
-                                 cfg[k] * 4, kernel_size=3, padding=1)]
+        # std_layers += [nn.Conv2d(vgg[v].out_channels,
+        #                          cfg[k] * 4, kernel_size=3, padding=1)]
         conf_layers += [nn.Conv2d(vgg[v].out_channels,
                         cfg[k] * num_classes, kernel_size=3, padding=1)]
     for k, v in enumerate(extra_layers[1::2], 2):
         loc_layers += [nn.Conv2d(v.out_channels, cfg[k]
                                  * 4, kernel_size=3, padding=1)]
-        std_layers += [nn.Conv2d(v.out_channels, cfg[k]
-                                 * 4, kernel_size=3, padding=1)]
+        # std_layers += [nn.Conv2d(v.out_channels, cfg[k]
+        #                          * 4, kernel_size=3, padding=1)]
         conf_layers += [nn.Conv2d(v.out_channels, cfg[k]
                                   * num_classes, kernel_size=3, padding=1)]
-    return vgg, extra_layers, (loc_layers, std_layers, conf_layers)
+    return vgg, extra_layers, (loc_layers, conf_layers)
 
 
 base = {

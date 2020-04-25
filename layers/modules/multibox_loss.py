@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from data import coco as cfg
-from ..box_utils import decode, match, log_sum_exp, point_form
+from ..box_utils import decode, match, log_sum_exp #, point_form
 
 
 class MultiBoxLoss(nn.Module):
@@ -85,8 +85,8 @@ class MultiBoxLoss(nn.Module):
 
     
         #bbox_pred grad, stop std
-        # loss_bbox = self.smooth_l1_loss(bbox_pred, bbox_targets, bbox_pred_std_nexp)
-        loss_bbox = F.smooth_l1_loss(bbox_pred, bbox_targets, size_average=False)
+        loss_bbox = self.smooth_l1_loss(bbox_pred, bbox_targets, bbox_pred_std_nexp)
+        # loss_bbox = F.smooth_l1_loss(bbox_pred, bbox_targets, size_average=False)
         
         bbox_pred_std_abs_logw_loss = torch.sum(bbox_pred_std_abs_logwr)
         bbox_inws_out = bbox_inws_out * scale
@@ -128,7 +128,7 @@ class MultiBoxLoss(nn.Module):
             labels = targets[idx][:, -1].data
             defaults = priors.data
             match(self.threshold, truths, defaults, self.variance, labels,
-                  loc_t, conf_t, idx)   # return ground truth in loc_t
+                  loc_t, conf_t, idx)   # return ground truth in loc_t, ground truth in [x1, y1, x2, y2]
         if self.use_gpu:
             loc_t = loc_t.cuda()   
             conf_t = conf_t.cuda()
@@ -144,7 +144,7 @@ class MultiBoxLoss(nn.Module):
         pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)
         # print(pos_idx.size())
 
-        loc_p2 = loc_data[pos_idx].view(-1, 4)
+        # loc_p2 = loc_data[pos_idx].view(-1, 4)
         # print(loc_p2.size())
         # print(loc_data[1].size())
         # print(priors.size())
@@ -153,16 +153,16 @@ class MultiBoxLoss(nn.Module):
         coords_box_pred =  tensor.new_empty((loc_data.size()))  #predicted bbox coordinates 
         # print(coords_box_pred.size())
         for i in range(loc_data.size(0)):
-            decoded_boxes = decode(loc_data[i], priors, self.variance)  # priors in [x,y,w,h], decoded_boxes in [x,y,w,h]
+            decoded_boxes = decode(loc_data[i], priors, self.variance)  # priors in [x,y,w,h], decoded_boxes in [x,y,x,y]
             coords_box_pred[i] = decoded_boxes
 
         # print('dd:', coords_box_pred.size())
 
         # loc_prior = loc_p + priors[pos_idx].view(-1, 4)  # the predicted positions (predicted offsets + priors)
         loc_pre = coords_box_pred[pos_idx].view(-1, 4)           # the predicted positions in [x,y,w,h]
-        loc_pre = point_form(loc_pre)             # in [ Xmin, Ymin, Xmax, Ymax]
+        # loc_pre = point_form(loc_pre)             # in [ Xmin, Ymin, Xmax, Ymax]
         loc_t = loc_t[pos_idx].view(-1, 4)        # the ground truth boxes
-        std_p = std_data[pos_idx].view(-1, 4)     # the predicted std
+        std_p = std_data[pos_idx].view(-1, 4)     # the predicted std  ################?
         ###################################
         # bbox_in = loc_pre - loc_t
         # bbox_inw = torch.mm(bbox_in * bbox_inside_weights)  # matrix multiplication    #bbox_inside_weights??
