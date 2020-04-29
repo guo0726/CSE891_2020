@@ -1,6 +1,6 @@
 import torch
 from torch.autograd import Function
-from ..box_utils import decode, nms, box_voting, nms2
+from ..box_utils import decode, nms, box_voting, nms2, nms_no_voting
 from data import voc as cfg
 
 
@@ -80,7 +80,10 @@ class Detect(Function):
                 # print('before nms: ',boxes.size())
                 # print(scores.size())
                 # print(std.size())
-                nms_boxes, nms_scores, count = nms(boxes, scores, std, self.nms_thresh, self.top_k)
+
+                # nms_boxes, nms_scores, count = nms(boxes, scores, std, self.nms_thresh, self.top_k)
+
+                nms_boxes, nms_scores, count = nms_no_voting(boxes, scores, std, self.nms_thresh, self.top_k)
 
                 nms_boxes_scores = torch.cat((nms_boxes, nms_scores.view(-1,1)), 1)
                 all_boxes_scores = torch.cat((boxes, scores.view(-1,1)), 1)
