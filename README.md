@@ -1,4 +1,4 @@
-# SSD: Single Shot MultiBox Object Detector, in PyTorch
+# Application of KL Loss to Single Shot MultiBox Object Detector, in PyTorch
 A [PyTorch](http://pytorch.org/) implementation of [Single Shot MultiBox Detector](http://arxiv.org/abs/1512.02325) from the 2016 paper by Wei Liu, Dragomir Anguelov, Dumitru Erhan, Christian Szegedy, Scott Reed, Cheng-Yang, and Alexander C. Berg.  The official and original Caffe code can be found [here](https://github.com/weiliu89/caffe/tree/ssd).
 
 A [PyTorch](http://pytorch.org/) implementation of [KL Loss](https://arxiv.org/abs/1809.08545) from the 2019 paper by Yihui He, Chenchen Zhu, Jianren Wang, Marios Savvides, and Xiangyu Zhang.  The official and original Caffe code can be found [here](https://github.com/yihui-he/KL-Loss).
