@@ -71,7 +71,7 @@ You can specify the parameters listed in the `eval.py` file by flagging them or 
 ## TODO
 The performance is not so good as expected, which we hope to complete in the near future
 - Still to come:
-  * [ ] I need to figure out why is not so good as expected
+  * [ ] I need to figure out why it is not so good as expected
   * [ ] Need more training
   * [ ] Tune the hyperparameters
 
